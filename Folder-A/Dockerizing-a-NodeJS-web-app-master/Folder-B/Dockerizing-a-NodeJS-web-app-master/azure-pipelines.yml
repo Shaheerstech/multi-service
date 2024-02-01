@@ -1,0 +1,115 @@
+pr:
+  autoCancel: true
+  branches:
+    include:
+      - development
+
+resources:
+- repo: self
+
+variables:
+  tag: '$(Build.BuildId)'
+  projectname: 'my-dev'
+
+stages:
+- stage: Build
+  displayName: Build Docker Image
+  jobs:
+  - job: Build
+    timeoutInMinutes: 120
+    displayName: Build
+    pool:
+      name: 'Azure Pipelines'
+      demands:
+      - Agent.OS -equals Linux
+      vmImage: ubuntu-latest
+
+    steps:
+    - checkout: self
+      clean: true
+
+    - task: Bash@3
+      displayName: Build myapp
+      inputs:
+        targetType: 'inline'
+        script: |
+          #!/bin/bash
+
+          # Set Project that container is related to, defaults to Misc
+          if [ -z ${DEP_PROJECT+x} ]; then
+            DEP_PROJECT='misc'
+          fi
+
+          # Set Container Name
+          DEP_NAME="myapp"
+
+          # Set the build context
+          BUILD_CONTEXT="."
+
+          # Set the tags you want to add to the image
+          TAGS="latest"
+
+          # Set the Docker Hub username and access token
+          DOCKERHUB_USERNAME="shaheerahmed123"
+          DOCKERHUB_ACCESS_TOKEN="dckr_pat_1jPqVkfewEkiv0w_Y5Hlb-bOy4Q"
+
+          # Check if the Docker binary exists
+          if ! command -v docker &> /dev/null
+          then
+              echo "Error: Docker binary not found."
+              exit 1 # Exit and indicate error
+          fi
+
+          # Log in to Docker Hub using the access token
+          echo "$DOCKERHUB_ACCESS_TOKEN" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin
+
+          # Set the name of the image
+          IMAGE_NAME="${DOCKERHUB_USERNAME}/${DEP_PROJECT}-${DEP_NAME}"
+
+          # Build the Docker image
+          docker build -t "$IMAGE_NAME" "$BUILD_CONTEXT"
+
+          # Add the tags to the image
+          for tag in $TAGS; do
+            docker tag "$IMAGE_NAME" "$IMAGE_NAME:$tag"
+            echo "Tagging Image $IMAGE_NAME:$tag"
+          done
+
+- stage: Push
+  displayName: Push Docker Image to Docker Hub
+  dependsOn: Build
+  jobs:
+  - job: Push
+    displayName: Push
+    pool:
+      name: 'Azure Pipelines'
+      demands:
+      - Agent.OS -equals Linux
+      vmImage: ubuntu-latest
+
+    steps:
+    - task: Bash@3
+      displayName: Push myapp to Docker Hub
+      inputs:
+        targetType: 'inline'
+        script: |
+          # Set Project that container is related to, defaults to Misc
+          if [ -z ${DEP_PROJECT+x} ]; then
+            DEP_PROJECT='misc'
+          fi
+
+          # Set Container Name
+          DEP_NAME="myapp"
+
+          # Set the Docker Hub username and access token
+          DOCKERHUB_USERNAME="shaheerahmed123"
+          DOCKERHUB_ACCESS_TOKEN="dckr_pat_1jPqVkfewEkiv0w_Y5Hlb-bOy4Q"
+
+          # Log in to Docker Hub using the access token
+          echo "$DOCKERHUB_ACCESS_TOKEN" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin
+
+          # Set the name of the image
+          IMAGE_NAME="${DOCKERHUB_USERNAME}/${DEP_PROJECT}-${DEP_NAME}"
+
+          # Push the Docker image to Docker Hub
+          docker push "$IMAGE_NAME"
